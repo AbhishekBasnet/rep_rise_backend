@@ -1,0 +1,29 @@
+.
+├── core
+│   ├── __init__.py
+│   ├── __pycache__
+│   │   ├── __init__.cpython-314.pyc
+│   │   ├── settings.cpython-314.pyc
+│   │   └── urls.cpython-314.pyc
+│   ├── api.py
+│   ├── asgi.py
+│   ├── settings.py
+│   ├── urls.py
+│   └── wsgi.py
+├── db.sqlite3
+├── manage.py
+├── rep_rise
+│   ├── __init__.py
+│   ├── __pycache__s
+│   ├── admin.py
+│   ├── apps.py
+│   ├── migrations
+│   │   ├── 0001_initial.py
+│   │   ├── __init__.py
+│   │   └── __pycache__
+│   │       ├── 0001_initial.cpython-314.pyc
+│   │       └── __init__.cpython-314.pyc
+│   ├── models.py
+│   ├── tests.py
+│   └── views.py
+└── tree.txt
