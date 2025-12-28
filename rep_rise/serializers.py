@@ -1,5 +1,7 @@
 from rest_framework import serializers
 from .models import StepLog
+from django.contrib.auth.models import User
+from .models import Profile
 
 class StepLogSerializer(serializers.ModelSerializer):
     class Meta:
@@ -19,3 +21,23 @@ class StepLogSerializer(serializers.ModelSerializer):
             defaults={'step_count': step_count}
         )
         return step_log
+
+class ProfileSerializer(serializers.ModelSerializer):
+    bmi = serializers.ReadOnlyField()
+
+    class Meta:
+        model = Profile
+        fields = ['height', 'weight', 'birth_date', 'activity_level', 'fitness_goal', 'bmi']
+
+class UserSerializer(serializers.ModelSerializer):
+    profile = ProfileSerializer()
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'profile']
+
+    def create(self, validated_data):
+        profile_data = validated_data.pop('profile')
+        user = User.objects.create_user(**validated_data)
+        Profile.objects.create(user=user, **profile_data)
+        return user
