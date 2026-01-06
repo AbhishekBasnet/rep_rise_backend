@@ -4,12 +4,19 @@ from django.core.exceptions import ValidationError
 
 
 class Profile(models.Model):
+    GENDER_CHOICES = [
+        ('M', 'Male'),
+        ('F', 'Female'),
+
+    ]
+
     user = models.OneToOneField(User, related_name='profile', on_delete=models.CASCADE)
     daily_step_goal = models.PositiveIntegerField(default=10000, help_text="Default baseline goal")
     height = models.FloatField(help_text="Height in cm", null=True, blank=True)
     weight = models.FloatField(help_text="Weight in kg", null=True, blank=True)
-    birth_date = models.DateField(null=True, blank=True)
-
+    # Changed birth_date to age as requested
+    age = models.PositiveIntegerField(help_text="Age in years", null=True, blank=True)
+    gender = models.CharField(max_length=1, choices=GENDER_CHOICES, null=True, blank=True)
 
 
     @property
@@ -18,22 +25,6 @@ class Profile(models.Model):
             return self.weight / ((self.height / 100) ** 2)
         return None
 
-    def __str__(self):
-        return f"{self.user.username}'s Profile"
-
-    @property
-    def bmi(self):
-        if self.height and self.weight:
-            return self.weight / ((self.height / 100) ** 2)
-        return None
-
-    def __str__(self):
-        return f"{self.user.username}'s Profile"
-    @property
-    def bmi(self):
-        if self.height and self.weight:
-            return self.weight / ((self.height / 100) ** 2)
-        return None
 
     def __str__(self):
         return f"{self.user.username}'s Profile"

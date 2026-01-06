@@ -1,16 +1,18 @@
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
 from .models import StepLog, Profile, StepGoalOverride, StepGoalPlan
 from django.contrib.auth.models import User
 
 
 #For User/Profiles
 class ProfileSerializer(serializers.ModelSerializer):
-    bmi = serializers.ReadOnlyField()  # Calculated via property in models.py
+    bmi = serializers.ReadOnlyField()
 
     class Meta:
         model = Profile
         fields = [
-            'height', 'weight', 'birth_date',
+            'height', 'weight', 'age', 'gender',
             'daily_step_goal', 'bmi'
         ]
 
@@ -33,6 +35,21 @@ class UserSerializer(serializers.ModelSerializer):
         # Ensure a Profile instance exists for the new user
         Profile.objects.get_or_create(user=user)
         return user
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token['username'] = user.username
+        return token
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+
+        data['user_id'] = self.user.id
+        data['username'] = self.user.username
+        data['email'] = self.user.email
+        return data
 
 #For Steps Related
 

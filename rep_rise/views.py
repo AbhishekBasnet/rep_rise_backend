@@ -5,7 +5,8 @@ from datetime import timedelta
 from datetime import datetime
 
 
-from .serializers import StepLogSerializer, StepGoalOverrideSerializer, StepGoalPlanSerializer, ProfileSerializer
+from .serializers import StepLogSerializer, StepGoalOverrideSerializer, StepGoalPlanSerializer, ProfileSerializer, \
+    CustomTokenObtainPairSerializer
 from django.utils import timezone
 
 from .models import Profile, StepGoalOverride, StepGoalPlan
@@ -19,7 +20,6 @@ from rest_framework import generics
 from django.contrib.auth.models import User
 from .serializers import UserSerializer
 from rest_framework.permissions import AllowAny
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -29,21 +29,6 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 
 #login
-class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    @classmethod
-    def get_token(cls, user):
-        token = super().get_token(user)
-        token['username'] = user.username
-        return token
-
-    def validate(self, attrs):
-        data = super().validate(attrs)
-
-        data['user_id'] = self.user.id
-        data['username'] = self.user.username
-        data['email'] = self.user.email
-        return data
-
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
@@ -69,6 +54,7 @@ class RegisterView(generics.CreateAPIView):
             "username": user.username,
             "email": user.email,
         }, status=status.HTTP_201_CREATED)
+
 
 class LogoutView(APIView):
     permission_classes = [AllowAny]
@@ -98,11 +84,14 @@ class ProfileManageView(generics.RetrieveUpdateAPIView):
         profile, created = Profile.objects.get_or_create(user=self.request.user)
         return profile
 
+
+
 #For Steps Related
 
 class StepGoalPlanRangeCreateView(generics.CreateAPIView):
     serializer_class = StepGoalPlanSerializer
     permission_classes = [permissions.IsAuthenticated]
+
 
 class StepLogUpdateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -113,8 +102,6 @@ class StepLogUpdateView(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
 
 
 class StepGoalOverrideSingleView(APIView):
@@ -248,7 +235,6 @@ class StepLogAnalyticsView(APIView):
             })
 
 
-
 class StepGoalPlanDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = StepGoalPlanSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -256,6 +242,7 @@ class StepGoalPlanDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
 
         return StepGoalPlan.objects.filter(user=self.request.user)
+
 
 # views.py
 
