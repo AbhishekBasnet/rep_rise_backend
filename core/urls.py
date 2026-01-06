@@ -5,7 +5,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from rep_rise.views import StepLogUpdateView, StepLogAnalyticsView, RegisterView, CustomTokenObtainPairView, LogoutView, \
     ProfileManageView, StepGoalOverrideSingleView, StepGoalPlanRangeCreateView, StepGoalPlanDetailView, \
-    StepGoalConsolidatedListView
+    StepGoalConsolidatedListView, UsernameCheckView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -13,6 +13,7 @@ urlpatterns = [
 
     ################## AUTH #######################
     path('api/v1/auth/register/', RegisterView.as_view(), name='auth-register'),
+    path('api/v1/auth/check-username/', UsernameCheckView.as_view(), name='check-username'),
     path('api/v1/auth/login/', CustomTokenObtainPairView.as_view(), name='token-obtain-pair'),
     path('api/v1/auth/logout/', LogoutView.as_view(), name='auth_logout'),
     path('api/v1/auth/token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),

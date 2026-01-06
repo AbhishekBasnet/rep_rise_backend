@@ -70,11 +70,32 @@ class LogoutView(APIView):
             return Response({"error": "Invalid token or already logged out."}, status=status.HTTP_400_BAD_REQUEST)
 
 
+class UsernameCheckView(APIView):
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        username = request.query_params.get('username', None)
+
+        if not username:
+            return Response(
+                {"error": "Username parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+        is_taken = User.objects.filter(username__iexact=username).exists()
+
+        return Response({
+            "username": username,
+            "is_taken": is_taken,
+            "available": not is_taken,
+            "message": "Username is taken." if is_taken else "Username is available."
+        }, status=status.HTTP_200_OK)
+
+
 class ProfileManageView(generics.RetrieveUpdateAPIView):
-    """
-    Get or Update the current user's profile.
-    If the profile doesn't exist, it creates one automatically.
-    """
+
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = ProfileSerializer
 
@@ -244,7 +265,7 @@ class StepGoalPlanDetailView(generics.RetrieveUpdateDestroyAPIView):
         return StepGoalPlan.objects.filter(user=self.request.user)
 
 
-# views.py
+
 
 class StepGoalConsolidatedListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
