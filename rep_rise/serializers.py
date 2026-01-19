@@ -110,12 +110,24 @@ class StepLogSerializer(serializers.ModelSerializer):
         fields = ['date', 'step_count']
 
     def create(self, validated_data):
-        # Extract user from the request context provided by the view
-        user = self.context['request'].user
-        date = validated_data.get('date')
-        step_count = validated_data.get('step_count')
 
-        # Use update_or_create to handle the unique_together constraint
+        user = self.context['request'].user
+        date = validated_data['date']
+        step_count = validated_data['step_count']
+
+        # 2. THE SELF-HEALING LOGIC
+        # Check if multiple entries exist BEFORE trying to update
+        existing_logs = StepLog.objects.filter(user=user, date=date)
+
+        if existing_logs.count() > 1:
+            print(
+                f"⚠️ DANGER: Found {existing_logs.count()} duplicates for User {user.id} on {date}. Fixing now...")
+            # Keep the most recent one (highest ID), delete the rest
+            last_log = existing_logs.order_by('-id').first()
+            existing_logs.exclude(id=last_log.id).delete()
+            print("✅ Duplicates deleted. Proceeding.")
+
+            # 3. Now it is 100% safe to call update_or_create
         step_log, created = StepLog.objects.update_or_create(
             user=user,
             date=date,

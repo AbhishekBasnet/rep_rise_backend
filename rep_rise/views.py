@@ -84,7 +84,7 @@ class UsernameCheckView(APIView):
             )
 
 
-        is_taken = User.objects.filter(username__iexact=username).exists()
+        is_taken = User.objects.filter(username__exact=username).exists()
 
         return Response({
             "username": username,
@@ -181,41 +181,49 @@ class StepLogAnalyticsView(APIView):
 
         # --- DAILY ---
         if period == 'daily':
+            check_date = anchor_date
             goal = self.get_goal_for_date(user, anchor_date)
             log = StepLog.objects.filter(user=user, date=anchor_date).first()
             steps = log.step_count if log else 0
 
             return Response({
                 "date": anchor_date,
+                "day_name": check_date.strftime("%a"),
                 "steps": steps,
                 "goal": goal,
-                "remaining": max(0, goal - steps)
             })
 
-        # --- WEEKLY ---
+       # --- WEEKLY (Modified) ---
         elif period == 'weekly':
-            days = 7
-            # Calculate start date based on the requested anchor_date (End Date)
-            # Example: If anchor is Sunday (22nd), start is Monday (16th)
-            start_date = anchor_date - timedelta(days=days - 1)
+            # 1. Find the start of the current week (Sunday)
+            # Python's weekday(): Mon=0 ... Sun=6
+            # We want to subtract enough days to get back to Sunday.
+            # If Today is Sun(6) -> (6+1)%7 = 0 days back.
+            # If Today is Tue(1) -> (1+1)%7 = 2 days back (Sun, Mon).
+            days_since_sunday = (anchor_date.weekday() + 1) % 7
+            start_date = anchor_date - timedelta(days=days_since_sunday)
+            
+            # 2. End date is Yesterday (Exclude today per requirements)
+            end_date = anchor_date - timedelta(days=1)
 
             weekly_data = []
 
-            for i in range(days):
-                check_date = start_date + timedelta(days=i)
-                daily_goal = self.get_goal_for_date(user, check_date)
-
-                log = StepLog.objects.filter(user=user, date=check_date).first()
+            # 3. Iterate from Sunday up to Yesterday
+            # If today is Sunday, start_date (Sun) > end_date (Sat), loop won't run -> Returns []
+            current_check_date = start_date
+            while current_check_date <= end_date:
+                daily_goal = self.get_goal_for_date(user, current_check_date)
+                log = StepLog.objects.filter(user=user, date=current_check_date).first()
                 daily_steps = log.step_count if log else 0
 
                 weekly_data.append({
-                    "date": check_date,
-                    # Short day name for UI (e.g., "Mon", "Tue")
-                    "day_name": check_date.strftime("%a"),
+                    "date": current_check_date,
+                    "day_name": current_check_date.strftime("%a"),
                     "steps": daily_steps,
-                    "goal_per_day": daily_goal,
-                    "remaining": max(0, daily_goal - daily_steps)
+                    "goal": daily_goal,
                 })
+                
+                current_check_date += timedelta(days=1)
 
             return Response(weekly_data)
 
@@ -265,8 +273,6 @@ class StepGoalPlanDetailView(generics.RetrieveUpdateDestroyAPIView):
         return StepGoalPlan.objects.filter(user=self.request.user)
 
 
-
-
 class StepGoalConsolidatedListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -312,3 +318,14 @@ class StepGoalConsolidatedListView(APIView):
             "single_overrides": single_serializer.data,
             "ranged_goals": range_serializer.data
         }, status=status.HTTP_200_OK)
+
+## get profile ##
+class CurrentUserView(generics.RetrieveAPIView):
+
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = UserSerializer
+
+    def get_object(self):
+
+        Profile.objects.get_or_create(user=self.request.user)
+        return self.request.user

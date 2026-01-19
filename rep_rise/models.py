@@ -5,9 +5,8 @@ from django.core.exceptions import ValidationError
 
 class Profile(models.Model):
     GENDER_CHOICES = [
-        ('M', 'Male'),
-        ('F', 'Female'),
-
+        ('male', 'male'),
+        ('female', 'female'),
     ]
 
     user = models.OneToOneField(User, related_name='profile', on_delete=models.CASCADE)
@@ -16,7 +15,12 @@ class Profile(models.Model):
     weight = models.FloatField(help_text="Weight in kg", null=True, blank=True)
     # Changed birth_date to age as requested
     age = models.PositiveIntegerField(help_text="Age in years", null=True, blank=True)
-    gender = models.CharField(max_length=1, choices=GENDER_CHOICES, null=True, blank=True)
+    gender = models.CharField(
+        max_length=10,
+        choices=GENDER_CHOICES,
+        null=True,
+        blank=True
+    )
 
 
     @property
@@ -30,9 +34,7 @@ class Profile(models.Model):
         return f"{self.user.username}'s Profile"
 
 class StepGoalPlan(models.Model):
-    """
-    Handles Daily, Weekly, and Monthly goal settings via date ranges.
-    """
+
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='goal_plans')
     start_date = models.DateField()
     end_date = models.DateField()
