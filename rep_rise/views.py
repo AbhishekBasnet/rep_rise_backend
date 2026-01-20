@@ -181,17 +181,39 @@ class StepLogAnalyticsView(APIView):
 
         # --- DAILY ---
         if period == 'daily':
-            check_date = anchor_date
-            goal = self.get_goal_for_date(user, anchor_date)
-            log = StepLog.objects.filter(user=user, date=anchor_date).first()
-            steps = log.step_count if log else 0
+            # fetch specific log for the anchor date (not just today)
+            step_log = StepLog.objects.filter(user=user, date=anchor_date).first()
 
-            return Response({
-                "date": anchor_date,
-                "day_name": check_date.strftime("%a"),
-                "steps": steps,
-                "goal": goal,
-            })
+            # Determine Goal (Profile default or specific override if you have that logic)
+            goal = 10000
+            if hasattr(user, 'profile') and user.profile.daily_step_goal:
+                goal = user.profile.daily_step_goal
+
+            if step_log:
+                data = {
+                    "date": anchor_date,
+                    "day_name": anchor_date.strftime('%a'),
+                    "steps": step_log.step_count,
+                    "goal": goal,
+                    # Safe access to instance attributes
+                    "calories_burned": step_log.calories_burned,
+                    "distance_meters": step_log.distance_meters,
+                    "duration_minutes": step_log.duration_minutes
+                }
+            else:
+                # Zero state for past/future dates with no logs
+                data = {
+                    "date": anchor_date,
+                    "day_name": anchor_date.strftime('%a'),
+                    "steps": 0,
+                    "goal": goal,
+                    "calories_burned": 0,
+                    "distance_meters": 0,
+                    "duration_minutes": 0
+                }
+
+            return Response(data)
+
 
        # --- WEEKLY (Modified) ---
         elif period == 'weekly':

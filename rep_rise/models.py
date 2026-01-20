@@ -58,8 +58,14 @@ class StepLog(models.Model):
     date = models.DateField()
     step_count = models.PositiveIntegerField(default=0)
 
+    # --- NEW COLUMNS ---
+    calories_burned = models.FloatField(default=0, help_text="Energy expenditure in kcal")
+    distance_meters = models.FloatField(default=0, help_text="Distance travelled in meters")
+    duration_minutes = models.PositiveIntegerField(default=0, help_text="Time spent active in minutes")
+    # -------------------
+
     class Meta:
-        unique_together = ('user', 'date')  # Ensures one entry per day per user
+        unique_together = ('user', 'date')
         ordering = ['-date']
 
 class StepGoalOverride(models.Model):
