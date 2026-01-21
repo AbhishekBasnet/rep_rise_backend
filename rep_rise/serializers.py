@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import StepLog, Profile, StepGoalOverride, StepGoalPlan
+from .models import StepLog, Profile
 from django.contrib.auth.models import User
 
 
@@ -51,38 +51,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['email'] = self.user.email
         return data
 
-#For Steps Related
-
-class StepGoalPlanSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = StepGoalPlan
-        fields = ['id', 'start_date', 'end_date', 'target_steps', 'description']
-
-    def validate(self, data):
-        user = self.context['request'].user
-        start = data.get('start_date')
-        end = data.get('end_date')
-
-        # Basic date check
-        if start and end and start > end:
-            raise serializers.ValidationError("Start date cannot be after end date.")
-
-        # Overlap Check
-        if start and end:
-            # Find any EXISTING plans that overlap
-            overlap_query = StepGoalPlan.objects.filter(
-                user=user,
-                start_date__lte=end,
-                end_date__gte=start
-            )
-
-            # CRITICAL FIX: If we are updating (self.instance exists),
-            # exclude the current plan from the check so it doesn't block itself.
-            if self.instance:
-                overlap_query = overlap_query.exclude(pk=self.instance.pk)
-
-            if overlap_query.exists():
-                raise serializers.ValidationError("This date range overlaps with an existing goal plan.")
 
         return data
 
@@ -91,20 +59,6 @@ class StepGoalPlanSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
-class StepGoalOverrideSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = StepGoalOverride
-        fields = ['date', 'target_steps']
-
-    def create(self, validated_data):
-        user = self.context['request'].user
-        # Logic: If an override for this date exists, update it; otherwise, create it.
-        override, created = StepGoalOverride.objects.update_or_create(
-            user=user,
-            date=validated_data['date'],
-            defaults={'target_steps': validated_data['target_steps']}
-        )
-        return override
 
 
 class StepLogSerializer(serializers.ModelSerializer):

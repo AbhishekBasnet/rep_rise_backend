@@ -4,8 +4,7 @@ from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from rep_rise.views import StepLogUpdateView, StepLogAnalyticsView, RegisterView, CustomTokenObtainPairView, LogoutView, \
-    ProfileManageView, StepGoalOverrideSingleView, StepGoalPlanRangeCreateView, StepGoalPlanDetailView, \
-    StepGoalConsolidatedListView, UsernameCheckView, CurrentUserView
+    ProfileManageView,  UsernameCheckView, CurrentUserView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -22,10 +21,7 @@ urlpatterns = [
     ################## STEPS #######################
     path('api/v1/steps/', StepLogUpdateView.as_view(), name='step-log-update'),
     path('api/v1/steps/analytics/', StepLogAnalyticsView.as_view(), name='step-log-analytics'),
-    path('api/v1/steps/goal/range/', StepGoalPlanRangeCreateView.as_view(), name='step-set-goal-range'),
-    path('api/v1/steps/goal/range/<int:pk>/', StepGoalPlanDetailView.as_view(), name='update-step-goal-range'),
-    path('api/v1/steps/goal/single/', StepGoalOverrideSingleView.as_view(), name='step-set-goal-single'),
-    path('api/v1/steps/goal/all/', StepGoalConsolidatedListView.as_view(), name='get-custom-goal-all'),
+
 
 
     ################## PROFILE #######################
