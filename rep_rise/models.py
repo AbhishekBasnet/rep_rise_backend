@@ -1,6 +1,7 @@
+from django.utils import timezone
 from django.db import models
 from django.contrib.auth.models import User
-from django.core.exceptions import ValidationError
+
 
 
 class Profile(models.Model):
@@ -14,12 +15,22 @@ class Profile(models.Model):
     height = models.FloatField(help_text="Height in cm", null=True, blank=True)
     weight = models.FloatField(help_text="Weight in kg", null=True, blank=True)
     age = models.PositiveIntegerField(help_text="Age in years", null=True, blank=True)
+    is_email_verified = models.BooleanField(default=False)
+    otp_code = models.CharField(max_length=6, null=True, blank=True)
+    otp_created_at = models.DateTimeField(null=True, blank=True)
+
     gender = models.CharField(
         max_length=10,
         choices=GENDER_CHOICES,
         null=True,
         blank=True
     )
+
+    def is_otp_valid(self, otp):
+        if self.otp_code == otp and self.otp_created_at:
+            expiration = self.otp_created_at + timezone.timedelta(minutes=2)
+            return timezone.now() < expiration
+        return False
 
 
     @property
