@@ -13,6 +13,7 @@ def generate_workout_plan(weight, height, goal, level):
     Generates a weekly workout plan based on user profile.
     Replicates the logic of filtering the dataset and assigning splits.
     """
+    print(f"DEBUG: Looking for file at: {CSV_PATH}")
     try:
         if not os.path.exists(CSV_PATH):
             return {"error": f"Dataset not found at {CSV_PATH}"}

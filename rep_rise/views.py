@@ -217,9 +217,9 @@ class WorkoutRecommendationView(APIView):
         # 2. Get or Create Recommendation Record
         rec, created = WorkoutRecommendation.objects.get_or_create(profile=profile)
 
-        # 3. CHECK: Is data stale? (Lazy Loading)
+        # 3. CHECK: Is data stale?
         if created or rec.is_outdated():
-            print(f"Generating new plan for {user.username}...")  # Debug
+            print(f"Generating new plan for {user.username}...")
 
             new_plan = generate_workout_plan(
                 weight=profile.weight,
@@ -228,14 +228,18 @@ class WorkoutRecommendationView(APIView):
                 level=profile.fitness_level
             )
 
+            # --- NEW CHECK: Don't save if there is an error ---
+            if "error" in new_plan:
+                # Send error to user, but DO NOT save it to DB
+                # This ensures next time it tries again
+                return Response(new_plan, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
             # 4. Save New Data & Update Snapshot
             rec.data = new_plan
             rec.saved_weight = profile.weight
             rec.saved_goal = profile.fitness_goal
             rec.saved_level = profile.fitness_level
             rec.save()
-        else:
-            print(f"Returning cached plan for {user.username}")  # Debug
 
         # 5. Return JSON
         serializer = WorkoutRecommendationSerializer(rec)
