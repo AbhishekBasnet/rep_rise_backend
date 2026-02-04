@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import StepLog, Profile
+
+from .models import StepLog, Profile,WorkoutRecommendation
 from django.contrib.auth.models import User
 
 
@@ -125,3 +126,9 @@ class StepLogSerializer(serializers.ModelSerializer):
             }
         )
         return step_log
+
+
+class WorkoutRecommendationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkoutRecommendation
+        fields = ['data', 'updated_at']
