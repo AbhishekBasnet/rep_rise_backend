@@ -4,7 +4,7 @@ from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from rep_rise.views import StepLogUpdateView, StepLogAnalyticsView, RegisterView, CustomTokenObtainPairView, LogoutView, \
-    ProfileManageView,  UsernameCheckView, CurrentUserView
+    ProfileManageView, UsernameCheckView, CurrentUserView, WorkoutRecommendationView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -27,5 +27,10 @@ urlpatterns = [
     ################## PROFILE #######################
     path('api/v1/user/profile/', ProfileManageView.as_view(), name='profile-manage'),
     path('api/v1/user/me/', CurrentUserView.as_view(), name='current-user-detail'),
+
+    ################## RECOMMENDATION MODEL #######################
+    path('api/v1/ai/recommendation/', WorkoutRecommendationView.as_view(), name='workout-recommendation'),
     ################## .... #######################
+
+
 ]

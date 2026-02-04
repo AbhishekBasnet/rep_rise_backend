@@ -1,58 +1,82 @@
-import pandas as pd
 import os
+import pandas as pd
+import random
 from django.conf import settings
 
-# Construct the absolute path to your CSV
-# Place 'Workout.csv' in a folder named 'data' inside your project root or app folder
-CSV_PATH = os.path.join(settings.BASE_DIR, 'myapp/data/Workout.csv')
+# Path to your dataset.
+# Make sure to create a 'data' folder inside your app and put Workout.csv there.
+CSV_PATH = os.path.join(settings.BASE_DIR, 'rep_rise/data/Workout.csv')
 
-
-# Update 'myapp' to your actual app name
 
 def generate_workout_plan(weight, height, goal, level):
     """
-    Replicates the logic from your Jupyter Notebook.
-    Returns a dictionary (JSON structure) of the weekly plan.
+    Generates a weekly workout plan based on user profile.
+    Replicates the logic of filtering the dataset and assigning splits.
     """
     try:
+        if not os.path.exists(CSV_PATH):
+            return {"error": f"Dataset not found at {CSV_PATH}"}
+
         df = pd.read_csv(CSV_PATH)
+        df.columns = df.columns.str.strip()  # Clean whitespace from headers
 
-        # Clean column names (strip whitespace)
-        df.columns = df.columns.str.strip()
+        # --- LOGIC: Define Split based on Fitness Level ---
+        if level == 'beginner':
+            # 3 Days Full Body
+            days = ['Monday', 'Wednesday', 'Friday']
+            split_type = 'Full Body'
+            exercises_per_day = 4
+        elif level == 'intermediate':
+            # 4 Days Upper/Lower
+            days = ['Monday', 'Tuesday', 'Thursday', 'Friday']
+            split_type = 'Upper/Lower'
+            exercises_per_day = 5
+        else:  # expert
+            # 5 Days Body Part Split (Bro Split)
+            days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+            split_type = 'Body Part Split'
+            exercises_per_day = 6
 
-        # --- YOUR NOTEBOOK LOGIC GOES HERE ---
-        # Since I can't see the full body of 'recommend_workout' in your snippet,
-        # I have implemented a robust filtering logic based on your CSV structure.
-        # You can replace this block with your exact pandas filtering if different.
-
-        # Example Logic: Filter sets/reps based on Goal
-        if goal == 'muscle_gain':
-            # Filter for Hypertrophy rep ranges (8-12)
-            # This is a heuristic; adjust based on how your CSV is structured
-            pass
-
-            # Example Logic: Create a 3-Day Split (Push/Pull/Legs) or 5-Day Split
-        # This is a simplified generator to match your JSON output format
-
-        weekly_plan = {}
-
-        # Simple rule-based distribution for demonstration
-        # (Replace with your actual ML/Filtering code)
-        split = {
-            "Day 1 (Chest)": df[df['Body Part'] == 'Chest'].head(4),
-            "Day 2 (Back)": df[df['Body Part'] == 'Back'].head(4),
-            "Day 3 (Legs)": df[df['Body Part'] == 'Legs'].head(4),
-            "Day 4 (Arms)": df[df['Body Part'] == 'Arms'].head(4),
-            "Day 5 (Shoulders/Abs)": df[df['Body Part'].isin(['Shoulders', 'Abs'])].head(4),
+        plan = {
+            "summary": {
+                "level": level,
+                "goal": goal,
+                "split": split_type
+            },
+            "schedule": {}
         }
 
-        for day, workout_data in split.items():
-            # Convert the DataFrame to a list of dictionaries for JSON compatibility
-            weekly_plan[day] = workout_data.to_dict(orient='records')
+        # --- LOGIC: Select Exercises ---
+        # This is a heuristic adaptation of your notebook logic
+        for i, day in enumerate(days):
+            daily_workout = []
 
-        return weekly_plan
+            if level == 'expert':
+                # Assign specific body parts to days for experts
+                body_parts = ['Chest', 'Back', 'Legs', 'Arms', 'Shoulders']
+                target = body_parts[i % len(body_parts)]
+                filtered_df = df[df['Body Part'].str.contains(target, case=False, na=False)]
+            elif level == 'intermediate':
+                # Upper vs Lower
+                if i % 2 == 0:  # Mon/Thu = Upper
+                    filtered_df = df[df['Body Part'].isin(['Chest', 'Back', 'Arms', 'Shoulders'])]
+                else:  # Tue/Fri = Lower
+                    filtered_df = df[df['Body Part'].isin(['Legs'])]
+            else:
+                # Beginner: Mix of everything
+                filtered_df = df
 
-    except FileNotFoundError:
-        return {"error": "Workout dataset not found on server."}
+            # Randomly sample exercises to create variety
+            # In a real ML model, you would use weights/scores here
+            if not filtered_df.empty:
+                # Get random sample, handle case if df is smaller than required count
+                count = min(len(filtered_df), exercises_per_day)
+                selected = filtered_df.sample(n=count)
+                daily_workout = selected[['Workout', 'Sets', 'Reps per Set']].to_dict(orient='records')
+
+            plan["schedule"][day] = daily_workout
+
+        return plan
+
     except Exception as e:
         return {"error": f"Calculation failed: {str(e)}"}

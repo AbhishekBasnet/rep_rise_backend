@@ -4,12 +4,12 @@ from datetime import date
 from datetime import timedelta
 from datetime import datetime
 
-
+from .ml_logic import generate_workout_plan
 from .serializers import StepLogSerializer, ProfileSerializer, \
-    CustomTokenObtainPairSerializer
+    CustomTokenObtainPairSerializer, WorkoutRecommendationSerializer
 from django.utils import timezone
 
-from .models import Profile
+from .models import Profile, WorkoutRecommendation
 from django.db.models import Sum
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -200,3 +200,43 @@ class CurrentUserView(generics.RetrieveAPIView):
 
         Profile.objects.get_or_create(user=self.request.user)
         return self.request.user
+
+
+class WorkoutRecommendationView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        # 1. Ensure Profile exists
+        try:
+            profile = user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile incomplete"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 2. Get or Create Recommendation Record
+        rec, created = WorkoutRecommendation.objects.get_or_create(profile=profile)
+
+        # 3. CHECK: Is data stale? (Lazy Loading)
+        if created or rec.is_outdated():
+            print(f"Generating new plan for {user.username}...")  # Debug
+
+            new_plan = generate_workout_plan(
+                weight=profile.weight,
+                height=profile.height,
+                goal=profile.fitness_goal,
+                level=profile.fitness_level
+            )
+
+            # 4. Save New Data & Update Snapshot
+            rec.data = new_plan
+            rec.saved_weight = profile.weight
+            rec.saved_goal = profile.fitness_goal
+            rec.saved_level = profile.fitness_level
+            rec.save()
+        else:
+            print(f"Returning cached plan for {user.username}")  # Debug
+
+        # 5. Return JSON
+        serializer = WorkoutRecommendationSerializer(rec)
+        return Response(serializer.data)
