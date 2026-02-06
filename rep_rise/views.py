@@ -205,22 +205,30 @@ class CurrentUserView(generics.RetrieveAPIView):
 class WorkoutRecommendationView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
+    def format_to_pascal(self, data):
+        """
+        Helper to convert snake_case or lowercase strings to Pascal Case/Title Case.
+        """
+        if isinstance(data, dict):
+            # Target the summary block specifically based on your JSON structure
+            summary = data.get("summary", {})
+            for key in ["goal", "level", "split"]:
+                if key in summary and isinstance(summary[key], str):
+                    # .replace('_', ' ').title() handles "muscle_gain" -> "Muscle Gain"
+                    summary[key] = summary[key].replace('_', ' ').title()
+        return data
+
     def get(self, request):
         user = request.user
 
-        # 1. Ensure Profile exists
         try:
             profile = user.profile
         except Profile.DoesNotExist:
             return Response({"error": "Profile incomplete"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 2. Get or Create Recommendation Record
         rec, created = WorkoutRecommendation.objects.get_or_create(profile=profile)
 
-        # 3. CHECK: Is data stale?
         if created or rec.is_outdated():
-            print(f"Generating new plan for {user.username}...")
-
             new_plan = generate_workout_plan(
                 weight=profile.weight,
                 height=profile.height,
@@ -228,19 +236,20 @@ class WorkoutRecommendationView(APIView):
                 level=profile.fitness_level
             )
 
-            # --- NEW CHECK: Don't save if there is an error ---
             if "error" in new_plan:
-                # Send error to user, but DO NOT save it to DB
-                # This ensures next time it tries again
                 return Response(new_plan, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-            # 4. Save New Data & Update Snapshot
-            rec.data = new_plan
+            formatted_plan = self.format_to_pascal(new_plan)
+
+            rec.data = formatted_plan
             rec.saved_weight = profile.weight
             rec.saved_goal = profile.fitness_goal
             rec.saved_level = profile.fitness_level
             rec.save()
 
-        # 5. Return JSON
         serializer = WorkoutRecommendationSerializer(rec)
-        return Response(serializer.data)
+
+        final_data = serializer.data
+        final_data['data'] = self.format_to_pascal(final_data.get('data', {}))
+
+        return Response(final_data)
