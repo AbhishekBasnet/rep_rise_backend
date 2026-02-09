@@ -1,21 +1,105 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-
+from .ml_logic import generate_workout_plan
 
 from .models import StepLog, Profile,WorkoutRecommendation
 from django.contrib.auth.models import User
 
 
 #For User/Profiles
+
 class ProfileSerializer(serializers.ModelSerializer):
     bmi = serializers.ReadOnlyField()
+    target_weight = serializers.FloatField(required=True, min_value=20.0, max_value=500.0)
+
+
+    height = serializers.FloatField(required=True, min_value=50.0, max_value=300.0)
+    weight = serializers.FloatField(required=True, min_value=20.0, max_value=500.0)
+    age = serializers.IntegerField(required=True, min_value=10, max_value=120)
+    gender = serializers.ChoiceField(choices=Profile.GENDER_CHOICES, required=True)
+
+    fitness_goal = serializers.ChoiceField(choices=Profile.GOAL_CHOICES, required=False, allow_null=True)
+    fitness_level = serializers.ChoiceField(choices=Profile.LEVEL_CHOICES, required=False, allow_null=True)
 
     class Meta:
         model = Profile
         fields = [
-            'height', 'weight', 'age', 'gender',
-            'daily_step_goal', 'bmi'
+            'id',
+            'height',
+            'weight',
+            'target_weight',  # [ADDED]
+            'age',
+            'gender',
+            'daily_step_goal',
+            'fitness_goal',
+            'fitness_level',
+            'bmi'
         ]
+        read_only_fields = ['id', 'user', 'bmi']
+
+    def update(self, instance, validated_data):
+        """
+        Custom update to trigger ML logic ONLY if physical stats change.
+        """
+        # 1. Identify fields that trigger a re-calculation
+        trigger_fields = [
+            'weight', 'height', 'age', 'target_weight',
+            'gender', 'fitness_goal', 'fitness_level'
+        ]
+
+        should_recalculate = False
+
+        # 2. Check if any trigger field is actually changing
+        for field in trigger_fields:
+            if field in validated_data and validated_data[field] != getattr(instance, field):
+                should_recalculate = True
+                break
+
+        # 3. Perform the standard database update
+        instance = super().update(instance, validated_data)
+
+        # 4. Run ML Logic if needed
+        if should_recalculate:
+            # Calculate new plan
+            result = generate_workout_plan(
+                age=instance.age,
+                height=instance.height,
+                weight=instance.weight,
+                ideal_weight=instance.target_weight,
+                fitness_level=instance.fitness_level
+            )
+
+            if result['status'] == 'success':
+                # Save/Update the Recommendation
+                WorkoutRecommendation.objects.update_or_create(
+                    profile=instance,
+                    defaults={
+                        'data': result['schedule'],
+                        'saved_weight': instance.weight,
+                        'saved_goal': result['meta']['goal'],
+                        'saved_level': result['meta']['fitness_level']
+                    }
+                )
+
+                # Update the Profile with the AI-calculated values
+                updates_to_save = []
+
+                # 1. Always update the Goal based on the new weights
+                instance.fitness_goal = result['meta']['goal']
+                updates_to_save.append('fitness_goal')
+
+                # 2. Update Level only if the user didn't force one
+                if not instance.fitness_level:
+                    instance.fitness_level = result['meta']['fitness_level']
+                    updates_to_save.append('fitness_level')
+
+                # Commit changes to Profile table
+                instance.save(update_fields=updates_to_save)
+
+
+        return instance
+
+        return instance
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)

@@ -3,17 +3,18 @@ from django.db import models
 from django.contrib.auth.models import User
 
 
-
 class Profile(models.Model):
     GENDER_CHOICES = [
-        ('male', 'male'),
-        ('female', 'female'),
+        ('male', 'Male'),
+        ('female', 'Female'),
     ]
+
     GOAL_CHOICES = [
         ('muscle_gain', 'Muscle Gain'),
-        ('weight_loss', 'Weight Loss'),
+        ('fat_loss', 'Fat Loss'),
         ('maintenance', 'Maintenance'),
     ]
+
     LEVEL_CHOICES = [
         ('beginner', 'Beginner'),
         ('intermediate', 'Intermediate'),
@@ -21,23 +22,29 @@ class Profile(models.Model):
     ]
 
     user = models.OneToOneField(User, related_name='profile', on_delete=models.CASCADE)
-    daily_step_goal = models.PositiveIntegerField(default=10000, help_text="Default baseline goal")
+
+    # Physical Attributes
     height = models.FloatField(help_text="Height in cm", null=True, blank=True)
-    weight = models.FloatField(help_text="Weight in kg", null=True, blank=True)
+    weight = models.FloatField(help_text="Current Weight in kg", null=True, blank=True)
+
+    # Required for ML Logic (ideal_weight)
+    target_weight = models.FloatField(help_text="Target/Ideal Weight in kg", null=True, blank=True)
+
     age = models.PositiveIntegerField(help_text="Age in years", null=True, blank=True)
-    fitness_goal = models.CharField(max_length=20, choices=GOAL_CHOICES, default='muscle_gain')
-    fitness_level = models.CharField(max_length=20, choices=LEVEL_CHOICES, default='beginner')
+    gender = models.CharField(max_length=10, choices=GENDER_CHOICES, null=True, blank=True)
+
+    # Preferences
+    fitness_goal = models.CharField(max_length=20, choices=GOAL_CHOICES, null=True, blank=True)
+
+    # Changed to NULL so ML logic can auto-calculate it if user doesn't specify
+    fitness_level = models.CharField(max_length=20, choices=LEVEL_CHOICES, null=True, blank=True)
+
+    daily_step_goal = models.PositiveIntegerField(default=10000, help_text="Default baseline goal")
+
+    # Auth / Security
     is_email_verified = models.BooleanField(default=False)
     otp_code = models.CharField(max_length=6, null=True, blank=True)
     otp_created_at = models.DateTimeField(null=True, blank=True)
-
-    gender = models.CharField(
-        max_length=10,
-        choices=GENDER_CHOICES,
-        null=True,
-        blank=True
-    )
-
 
     def is_otp_valid(self, otp):
         if self.otp_code == otp and self.otp_created_at:
@@ -45,17 +52,15 @@ class Profile(models.Model):
             return timezone.now() < expiration
         return False
 
-
     @property
     def bmi(self):
         if self.height and self.weight:
-            return self.weight / ((self.height / 100) ** 2)
+            height_m = self.height / 100
+            return round(self.weight / (height_m ** 2), 2)
         return None
-
 
     def __str__(self):
         return f"{self.user.username}'s Profile"
-
 
 
 class StepLog(models.Model):

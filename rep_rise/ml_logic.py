@@ -1,83 +1,212 @@
 import os
 import pandas as pd
-import random
 from django.conf import settings
+from pathlib import Path
 
-# Path to your dataset.
-# Make sure to create a 'data' folder inside your app and put Workout.csv there.
-CSV_PATH = os.path.join(settings.BASE_DIR, 'rep_rise/data/Workout.csv')
+# --- CONFIGURATION ---
+# Assumes structure: project_root/rep_rise/data/Workout.csv
+# We use Path for OS-agnostic handling (Windows/Mac/Linux friendly)
+CSV_REL_PATH = Path('rep_rise/data/Workout.csv')
 
 
-def generate_workout_plan(weight, height, goal, level):
+def load_data():
     """
-    Generates a weekly workout plan based on user profile.
-    Replicates the logic of filtering the dataset and assigning splits.
+    Loads and cleans the workout dataset.
     """
-    print(f"DEBUG: Looking for file at: {CSV_PATH}")
-    try:
-        if not os.path.exists(CSV_PATH):
-            return {"error": f"Dataset not found at {CSV_PATH}"}
+    # Construct absolute path using Django's BASE_DIR
+    csv_path = settings.BASE_DIR / CSV_REL_PATH
 
-        df = pd.read_csv(CSV_PATH)
-        df.columns = df.columns.str.strip()  # Clean whitespace from headers
+    if not csv_path.exists():
+        # Fallback for local testing if needed, or raise clear error
+        raise FileNotFoundError(f"Dataset not found at {csv_path}. check 'rep_rise/data' folder.")
 
-        # --- LOGIC: Define Split based on Fitness Level ---
-        if level == 'beginner':
-            # 3 Days Full Body
-            days = ['Monday', 'Wednesday', 'Friday']
-            split_type = 'Full Body'
-            exercises_per_day = 4
-        elif level == 'intermediate':
-            # 4 Days Upper/Lower
-            days = ['Monday', 'Tuesday', 'Thursday', 'Friday']
-            split_type = 'Upper/Lower'
-            exercises_per_day = 5
-        else:  # expert
-            # 5 Days Body Part Split (Bro Split)
-            days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-            split_type = 'Body Part Split'
-            exercises_per_day = 6
+    df = pd.read_csv(csv_path)
 
-        plan = {
-            "summary": {
-                "level": level,
-                "goal": goal,
-                "split": split_type
-            },
-            "schedule": {}
+    # Clean column names (remove spaces)
+    df.columns = df.columns.str.strip()
+
+    # Clean body part data for easier matching (strip and lower)
+    df['Body Part'] = df['Body Part'].str.strip().str.lower()
+
+    # Clean Type of Muscle for filtering (Crucial for the Expert split)
+    if 'Type of Muscle' in df.columns:
+        df['Type of Muscle'] = df['Type of Muscle'].str.strip().str.lower()
+
+    return df
+
+
+# --- 1. FITNESS CALCULATIONS ---
+
+def calculate_bmi(weight, height_cm):
+    if not height_cm: return 0
+    height_m = height_cm / 100
+    return round(weight / (height_m ** 2), 2)
+
+
+def get_fitness_level(age, bmi):
+    """
+    Matches Notebook Cell 32 Logic exactly.
+    """
+    # Rule 1: Age > 45 or BMI >= 30 -> Beginner
+    if age > 45 or bmi >= 30:
+        return "beginner"
+    # Rule 2: 25 <= BMI < 30 -> Beginner
+    elif 25 <= bmi < 30:
+        return "beginner"
+    # Rule 3: 18.5 <= BMI < 25 -> Intermediate
+    elif 18.5 <= bmi < 25:
+        return "intermediate"
+    # Default (BMI < 18.5) -> Beginner
+    else:
+        return "beginner"
+
+
+def get_workout_goal(weight, ideal_weight):
+    if weight > ideal_weight:
+        return "fat_loss"
+    elif weight < ideal_weight:
+        return "muscle_gain"
+    else:
+        return "maintenance"
+
+
+# --- 2. WORKOUT SPLIT CONFIGURATION ---
+
+def get_workout_split(goal, fitness_level):
+    fitness_level = fitness_level.lower()
+    goal = goal.lower()
+
+    if fitness_level == "beginner":
+        return {
+            "Day 1": ["chest", "back"],
+            "Day 2": ["legs", "abs"],
+            "Day 3": ["shoulders", "arms"]
         }
 
-        # --- LOGIC: Select Exercises ---
-        # This is a heuristic adaptation of your notebook logic
-        for i, day in enumerate(days):
-            daily_workout = []
+    elif fitness_level == "intermediate":
+        if goal == "muscle_gain":
+            return {
+                "Day 1": ["chest"],
+                "Day 2": ["back"],
+                "Day 3": ["legs"],
+                "Day 4": ["shoulders"],
+                "Day 5": ["arms"]
+            }
+        else:  # fat_loss / maintenance
+            return {
+                "Day 1": ["chest", "back"],
+                "Day 2": ["legs"],
+                "Day 3": ["shoulders", "arms"],
+                "Day 4": ["abs"]
+            }
 
-            if level == 'expert':
-                # Assign specific body parts to days for experts
-                body_parts = ['Chest', 'Back', 'Legs', 'Arms', 'Shoulders']
-                target = body_parts[i % len(body_parts)]
-                filtered_df = df[df['Body Part'].str.contains(target, case=False, na=False)]
-            elif level == 'intermediate':
-                # Upper vs Lower
-                if i % 2 == 0:  # Mon/Thu = Upper
-                    filtered_df = df[df['Body Part'].isin(['Chest', 'Back', 'Arms', 'Shoulders'])]
-                else:  # Tue/Fri = Lower
-                    filtered_df = df[df['Body Part'].isin(['Legs'])]
-            else:
-                # Beginner: Mix of everything
-                filtered_df = df
+    else:  # expert / advanced
+        return {
+            "Day 1": ["chest", "triceps"],  # Logic handles mapping 'triceps' -> 'arms'
+            "Day 2": ["back", "biceps"],  # Logic handles mapping 'biceps' -> 'arms'
+            "Day 3": ["legs"],
+            "Day 4": ["shoulders"],
+            "Day 5": ["abs"]
+        }
 
-            # Randomly sample exercises to create variety
-            # In a real ML model, you would use weights/scores here
-            if not filtered_df.empty:
-                # Get random sample, handle case if df is smaller than required count
-                count = min(len(filtered_df), exercises_per_day)
-                selected = filtered_df.sample(n=count)
-                daily_workout = selected[['Workout', 'Sets', 'Reps per Set']].to_dict(orient='records')
 
-            plan["schedule"][day] = daily_workout
+def get_exercise_count(fitness_level):
+    level = fitness_level.lower()
+    if level == "beginner":
+        return 3
+    elif level == "intermediate":
+        return 4
+    else:
+        return 5
 
-        return plan
+
+def adjust_sets_reps(bmi, goal):
+    # Handles both string variations for safety
+    if goal in ["fat_loss", "weight_loss"]:
+        return "3", "12-20"
+
+    if bmi < 18.5:
+        return "4", "8-12"
+    elif bmi > 25:
+        return "3", "12-15"
+    else:
+        return "3-4", "10-12"
+
+
+# --- 3. EXERCISE SELECTION ---
+
+def select_exercises(df, body_part, max_exercises):
+    body_part = body_part.lower()
+
+    # Logic Fix: Map specific muscle requests (Triceps/Biceps) to the "Arms" body part
+    # but filter by the 'Type of Muscle' column.
+    if body_part in ['triceps', 'biceps']:
+        filtered = df[
+            (df["Body Part"] == "arms") &
+            (df["Type of Muscle"].str.contains(body_part))
+            ]
+    else:
+        filtered = df[df["Body Part"] == body_part]
+
+    if filtered.empty:
+        return []
+
+    # Random sample matching notebook logic
+    count = min(len(filtered), max_exercises)
+    return filtered.sample(n=count).to_dict(orient='records')
+
+
+# --- 4. MAIN ENTRY POINT ---
+
+def generate_workout_plan(age, height, weight, ideal_weight, fitness_level=None):
+    try:
+        df = load_data()
+
+        # 1. Calculate stats
+        bmi = calculate_bmi(weight, height)
+        goal = get_workout_goal(weight, ideal_weight)
+
+        # 2. Determine Level (Calculated vs Override)
+        calc_level = get_fitness_level(age, bmi)
+        final_level = fitness_level if fitness_level else calc_level
+
+        # 3. Get Configuration
+        split = get_workout_split(goal, final_level)
+        max_exercises = get_exercise_count(final_level)
+        sets, reps = adjust_sets_reps(bmi, goal)
+
+        weekly_plan = {}
+
+        for day_name, body_parts in split.items():
+            day_plan = []
+
+            for part in body_parts:
+                exercises = select_exercises(df, part, max_exercises)
+
+                for ex in exercises:
+                    day_plan.append({
+                        "exercise": ex.get('Workout'),
+                        "target_muscle": ex.get('Type of Muscle'),
+                        "body_part": part,  # Return the requested part name (e.g. 'triceps')
+                        "sets": sets,
+                        "reps": reps,
+                        "rest_time": "60s"
+                    })
+
+            weekly_plan[day_name] = day_plan
+
+        return {
+            "status": "success",
+            "meta": {
+                "bmi": bmi,
+                "fitness_level": final_level,
+                "goal": goal,
+            },
+            "schedule": weekly_plan
+        }
 
     except Exception as e:
-        return {"error": f"Calculation failed: {str(e)}"}
+        return {
+            "status": "error",
+            "message": str(e)
+        }

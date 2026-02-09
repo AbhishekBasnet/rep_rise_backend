@@ -205,51 +205,54 @@ class CurrentUserView(generics.RetrieveAPIView):
 class WorkoutRecommendationView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    def format_to_pascal(self, data):
-        """
-        Helper to convert snake_case or lowercase strings to Pascal Case/Title Case.
-        """
-        if isinstance(data, dict):
-            # Target the summary block specifically based on your JSON structure
-            summary = data.get("summary", {})
-            for key in ["goal", "level", "split"]:
-                if key in summary and isinstance(summary[key], str):
-                    # .replace('_', ' ').title() handles "muscle_gain" -> "Muscle Gain"
-                    summary[key] = summary[key].replace('_', ' ').title()
-        return data
-
     def get(self, request):
         user = request.user
 
+        # 1. Ensure Profile Exists
         try:
             profile = user.profile
         except Profile.DoesNotExist:
-            return Response({"error": "Profile incomplete"}, status=status.HTTP_400_BAD_REQUEST)
-
-        rec, created = WorkoutRecommendation.objects.get_or_create(profile=profile)
-
-        if created or rec.is_outdated():
-            new_plan = generate_workout_plan(
-                weight=profile.weight,
-                height=profile.height,
-                goal=profile.fitness_goal,
-                level=profile.fitness_level
+            return Response(
+                {"error": "Profile not found. Please complete your profile first."},
+                status=status.HTTP_404_NOT_FOUND
             )
 
-            if "error" in new_plan:
-                return Response(new_plan, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # 2. Validation: Check if critical fields for ML are present
+        if not all([profile.age, profile.height, profile.weight, profile.target_weight]):
+             return Response(
+                {"error": "Profile incomplete. Please update age, height, weight, and target weight."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-            formatted_plan = self.format_to_pascal(new_plan)
+        # 3. Get or Create Recommendation Object
+        rec, created = WorkoutRecommendation.objects.get_or_create(profile=profile)
 
-            rec.data = formatted_plan
+        # 4. Generate Plan (Fallback/First-Time Logic)
+        # Note: Regular updates are handled by ProfileSerializer.update(),
+        # this block runs only if it's the first time or data is missing.
+        if created or not rec.data:
+            result = generate_workout_plan(
+                age=profile.age,
+                height=profile.height,
+                weight=profile.weight,
+                ideal_weight=profile.target_weight,
+                fitness_level=profile.fitness_level
+            )
+
+            if result['status'] == 'error':
+                 return Response(
+                     {"error": f"Generation failed: {result.get('message')}"},
+                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                 )
+
+            # Save the new plan
+            rec.data = result['schedule']
             rec.saved_weight = profile.weight
-            rec.saved_goal = profile.fitness_goal
-            rec.saved_level = profile.fitness_level
+            # Save the meta-data returned by logic (it might have auto-calculated these)
+            rec.saved_goal = result['meta']['goal']
+            rec.saved_level = result['meta']['fitness_level']
             rec.save()
 
+        # 5. Serialize and Return
         serializer = WorkoutRecommendationSerializer(rec)
-
-        final_data = serializer.data
-        final_data['data'] = self.format_to_pascal(final_data.get('data', {}))
-
-        return Response(final_data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
