@@ -2,6 +2,7 @@ import os
 import pandas as pd
 from django.conf import settings
 from pathlib import Path
+from .utils import get_video_link
 
 # --- CONFIGURATION ---
 # Assumes structure: project_root/rep_rise/data/Workout.csv
@@ -210,3 +211,47 @@ def generate_workout_plan(age, height, weight, ideal_weight, fitness_level=None)
             "status": "error",
             "message": str(e)
         }
+
+
+# --- 5. PIPELINE: ENRICHMENT & PROGRESS ---
+
+def attach_video_links(schedule_data):
+    """
+    Step 2: Iterates through the generated schedule and injects 'video_url'.
+    """
+    for day, exercises in schedule_data.items():
+        if isinstance(exercises, list):
+            for ex in exercises:
+                # ex is a dict like {'exercise': 'Bench Press', ...}
+                ex_name = ex.get('exercise')
+                video_url = get_video_link(ex_name)
+
+                # Inject the field (this modifies the dictionary in place)
+                ex['video_url'] = video_url
+
+    return schedule_data
+
+
+def initialize_progress(schedule_data):
+    """
+    Step 3: Wraps the schedule and adds a progress tracker.
+
+    Old Structure: {'Day 1': [...], 'Day 2': [...]}
+    New Structure:
+    {
+       'schedule': {'Day 1': [...], 'Day 2': [...]},
+       'progress': {'Day 1': False, 'Day 2': False}
+    }
+    """
+    # 1. Create the progress map based on the keys (days)
+    progress_map = {}
+    for day_key in schedule_data.keys():
+        progress_map[day_key] = False  # Default to Not Done
+
+    # 2. restructure
+    final_json = {
+        "schedule": schedule_data,
+        "progress": progress_map
+    }
+
+    return final_json

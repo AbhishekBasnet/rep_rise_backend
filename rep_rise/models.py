@@ -104,3 +104,4 @@ class WorkoutRecommendation(models.Model):
 
     def __str__(self):
         return f"Recommendation for {self.profile.user.username}"
+
