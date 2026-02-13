@@ -4,12 +4,12 @@ from datetime import date
 from datetime import timedelta
 from datetime import datetime
 
-
+from .ml_logic import generate_workout_plan, attach_video_links, initialize_progress
 from .serializers import StepLogSerializer, ProfileSerializer, \
-    CustomTokenObtainPairSerializer
+    CustomTokenObtainPairSerializer, WorkoutRecommendationSerializer, WorkoutProgressSerializer
 from django.utils import timezone
 
-from .models import Profile
+from .models import Profile, WorkoutRecommendation
 from django.db.models import Sum
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -200,3 +200,110 @@ class CurrentUserView(generics.RetrieveAPIView):
 
         Profile.objects.get_or_create(user=self.request.user)
         return self.request.user
+
+
+class WorkoutRecommendationView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        # 1. Ensure Profile Exists
+        try:
+            profile = user.profile
+        except Profile.DoesNotExist:
+            return Response(
+                {"error": "Profile not found. Please complete your profile first."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # 2. Validation: Check if critical fields for ML are present
+        if not all([profile.age, profile.height, profile.weight, profile.target_weight]):
+             return Response(
+                {"error": "Profile incomplete. Please update age, height, weight, and target weight."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 3. Get or Create Recommendation Object
+        rec, created = WorkoutRecommendation.objects.get_or_create(profile=profile)
+
+        # 4. Generate Plan (Fallback/First-Time Logic)
+        # Note: Regular updates are handled by ProfileSerializer.update(),
+        # this block runs only if it's the first time or data is missing.
+
+        if created or not rec.data:
+            result = generate_workout_plan(
+                age=profile.age,
+                height=profile.height,
+                weight=profile.weight,
+                ideal_weight=profile.target_weight,
+                fitness_level=profile.fitness_level
+            )
+
+            if result['status'] == 'error':
+                return Response(
+                    {"error": f"Generation failed: {result.get('message')}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+            # --- PIPELINE START ---
+            raw_schedule = result['schedule']
+            enriched_schedule = attach_video_links(raw_schedule)
+            final_data = initialize_progress(enriched_schedule)
+            # --- PIPELINE END ---
+
+            rec.data = final_data
+            rec.saved_weight = profile.weight
+            rec.saved_goal = result['meta']['goal']
+            rec.saved_level = result['meta']['fitness_level']
+            rec.save()
+
+        # 5. Serialize and Return
+        serializer = WorkoutRecommendationSerializer(rec)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class WorkoutProgressView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request):
+        serializer = WorkoutProgressSerializer(data=request.data)
+        if serializer.is_valid():
+            user = request.user
+            day_name = serializer.validated_data['day_name']
+            is_done = serializer.validated_data['is_done']
+
+            try:
+                # 1. Get the recommendation
+                rec = WorkoutRecommendation.objects.get(profile__user=user)
+
+                # 2. Get mutable copy of data
+                current_data = rec.data
+
+                # 3. Check if structure is valid (Pipeline V2 structure)
+                if 'progress' not in current_data:
+                    return Response(
+                        {
+                            "error": "Old plan format detected. Please update your profile settings to regenerate a new plan."},
+                        status=status.HTTP_409_CONFLICT
+                    )
+
+                # 4. Update the specific day
+                if day_name in current_data['progress']:
+                    current_data['progress'][day_name] = is_done
+
+                    # 5. Save back to DB
+                    rec.data = current_data
+                    rec.save()
+
+                    return Response({
+                        "message": "Progress updated",
+                        "data": rec.data
+                    }, status=status.HTTP_200_OK)
+                else:
+                    return Response({"error": f"Day '{day_name}' not found in plan."}, status=status.HTTP_404_NOT_FOUND)
+
+            except WorkoutRecommendation.DoesNotExist:
+                return Response({"error": "No workout plan found."}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
