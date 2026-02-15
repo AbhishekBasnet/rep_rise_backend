@@ -96,17 +96,17 @@ class RepRiseAPITests(APITestCase):
             'weight': 80,
             'target_weight': 75,
             'age': 25,
-            'gender': 'male'
+            'gender': 'male'  # Ensure your model accepts lowercase 'male'
         }
 
-        response = self.client.put(self.profile_url, data)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+        response = self.client.patch(self.profile_url, data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         self.user.profile.refresh_from_db()
         self.assertTrue(hasattr(self.user.profile, 'recommendation'))
         self.assertIsNotNone(self.user.profile.recommendation.data)
-
 
         self.assertEqual(self.user.profile.fitness_goal, 'fat_loss')
 
