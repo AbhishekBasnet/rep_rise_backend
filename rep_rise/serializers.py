@@ -10,16 +10,23 @@ from django.contrib.auth.models import User
 
 class ProfileSerializer(serializers.ModelSerializer):
     bmi = serializers.ReadOnlyField()
+
+    # Validation constraints
     target_weight = serializers.FloatField(required=True, min_value=20.0, max_value=500.0)
-
-
     height = serializers.FloatField(required=True, min_value=50.0, max_value=300.0)
     weight = serializers.FloatField(required=True, min_value=20.0, max_value=500.0)
     age = serializers.IntegerField(required=True, min_value=10, max_value=120)
-    gender = serializers.ChoiceField(choices=Profile.GENDER_CHOICES, required=True)
 
-    fitness_goal = serializers.ChoiceField(choices=Profile.GOAL_CHOICES, required=False, allow_null=True)
-    fitness_level = serializers.ChoiceField(choices=Profile.LEVEL_CHOICES, required=False, allow_null=True)
+    # STRICT VALIDATION: Must be a valid choice from models.py.
+    # Cannot be null, cannot be empty string "".
+    fitness_level = serializers.ChoiceField(
+        choices=Profile.LEVEL_CHOICES,
+        required=True,
+        allow_null=False,
+        allow_blank=False
+    )
+
+    daily_step_goal = serializers.IntegerField(required=False, min_value=1000)
 
     class Meta:
         model = Profile
@@ -27,7 +34,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             'id',
             'height',
             'weight',
-            'target_weight',  # [ADDED]
+            'target_weight',
             'age',
             'gender',
             'daily_step_goal',
@@ -56,11 +63,12 @@ class ProfileSerializer(serializers.ModelSerializer):
                 break
 
         # 3. Perform the standard database update
+        # This saves the user's explicit choice (e.g., 'beginner') to the DB
         instance = super().update(instance, validated_data)
 
         # 4. Run ML Logic if needed
         if should_recalculate:
-            # 1. Calculate new plan (Step 1)
+            # Calculate new plan using the USER'S selected fitness level
             result = generate_workout_plan(
                 age=instance.age,
                 height=instance.height,
@@ -70,43 +78,29 @@ class ProfileSerializer(serializers.ModelSerializer):
             )
 
             if result['status'] == 'success':
-                # 2. Run the Pipeline
+                # Run the Pipeline
                 raw_schedule = result['schedule']
-
-                # Step 2: Attach Links
                 enriched_schedule = attach_video_links(raw_schedule)
-
-                # Step 3: Initialize Progress Structure
                 final_data = initialize_progress(enriched_schedule)
 
                 # Save/Update the Recommendation
                 WorkoutRecommendation.objects.update_or_create(
                     profile=instance,
                     defaults={
-                        'data': final_data,  # SAVING THE NEW STRUCTURE
+                        'data': final_data,
                         'saved_weight': instance.weight,
                         'saved_goal': result['meta']['goal'],
-                        'saved_level': result['meta']['fitness_level']
+                        'saved_level': instance.fitness_level  # Save the level the user chose
                     }
                 )
 
-                # Update the Profile with the AI-calculated values
-                updates_to_save = []
-
-                # 1. Always update the Goal based on the new weights
+                # Update the Profile Goal
+                # We update fitness_goal because weight changes might shift a user from
+                # "maintenance" to "fat_loss" automatically, but we keep their chosen Level.
                 instance.fitness_goal = result['meta']['goal']
-                updates_to_save.append('fitness_goal')
 
-                # 2. Update Level only if the user didn't force one
-                if not instance.fitness_level:
-                    instance.fitness_level = result['meta']['fitness_level']
-                    updates_to_save.append('fitness_level')
-
-                # Commit changes to Profile table
-                instance.save(update_fields=updates_to_save)
-
-
-        return instance
+                # We do NOT update fitness_level here anymore, because the user explicitly set it.
+                instance.save(update_fields=['fitness_goal'])
 
         return instance
 
@@ -143,9 +137,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['user_id'] = self.user.id
         data['username'] = self.user.username
         data['email'] = self.user.email
-        return data
-
-
         return data
 
     def create(self, validated_data):
